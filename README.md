@@ -2,7 +2,7 @@
 
 An interactive, web-based map designed to help students, staff, and visitors easily locate essential amenities surrounding the Paschimanchal Campus (WRC) in Pokhara. 
 
-### 🚀 [Click here to view the live Interactive Map](https://roshan-pandey-3.github.io/your-repository-name/)
+### 🚀 [Click here to view the live Interactive Map](https://roshan-pandey-3.github.io/Web-Map/)
 
 ---
 
