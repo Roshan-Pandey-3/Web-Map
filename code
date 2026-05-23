@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Interactive Map: Public Amenities near WRC, Pokhara</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+            z-index: 1;
+        }
+
+        /* custom floating control panel */
+        .info-panel {
+            position: absolute;
+            bottom: 30px;
+            left: 10px;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            color: white;
+            padding: 12px 18px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+            pointer-events: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            border-left: 4px solid #ff9800;
+            max-width: 280px;
+            transition: 0.2s;
+        }
+
+        .info-panel strong {
+            color: #ffaa66;
+        }
+
+        .control-bar {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 1000;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+            padding: 12px;
+            min-width: 200px;
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(4px);
+            font-size: 13px;
+        }
+
+        .control-bar select, .control-bar button {
+            width: 100%;
+            margin-top: 8px;
+            padding: 6px 10px;
+            border-radius: 30px;
+            border: 1px solid #ccc;
+            background: #f9f9f9;
+            font-weight: 500;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .control-bar button {
+            background: #2c3e66;
+            color: white;
+            border: none;
+        }
+
+        .control-bar button:hover {
+            background: #1e2b48;
+        }
+
+        .control-bar select:hover {
+            background: #fff;
+        }
+
+        .buffer-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+
+        .buffer-btn {
+            flex: 1;
+            text-align: center;
+            background: #4a6a8b;
+            color: white;
+            border: none;
+            border-radius: 30px;
+            padding: 6px 0;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .buffer-btn.active {
+            background: #e67e22;
+            box-shadow: 0 0 5px rgba(230,126,34,0.5);
+        }
+
+        .buffer-btn:hover {
+            background: #2c3e66;
+        }
+
+        .legend {
+            background: rgba(255,255,240,0.92);
+            padding: 10px 12px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            font-size: 12px;
+            line-height: 1.4;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        .legend i {
+            width: 14px;
+            height: 14px;
+            display: inline-block;
+            margin-right: 6px;
+            border-radius: 50%;
+            vertical-align: middle;
+        }
+
+        .leaflet-popup-content {
+            font-size: 13px;
+            font-weight: 500;
+            min-width: 180px;
+        }
+
+        .hover-tooltip-custom {
+            font-weight: bold;
+            background: #222;
+            color: #fff;
+            border-radius: 4px;
+            padding: 4px 8px;
+        }
+
+        @media (max-width: 600px) {
+            .control-bar { top: 10px; right: 8px; min-width: 170px; padding: 8px; }
+            .info-panel { font-size: 11px; bottom: 15px; left: 8px; max-width: 240px; }
+            .buffer-buttons { gap: 5px; }
+            .buffer-btn { font-size: 10px; padding: 4px 0; }
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="info-panel" id="hoverInfoPanel">
+        🧭 <strong>Hover over any amenity</strong><br>
+        <span id="hoverDetails">Name, type & distance will appear here</span>
+    </div>
+
+    <div class="control-bar">
+        <b>🗺️ Interactive controls</b>
+        <button id="resetViewBtn">⟳ Reset view & clear buffer</button>
+        
+        <div style="margin-top: 8px; font-size: 12px; font-weight: bold;">📍 Buffer radius:</div>
+        <div class="buffer-buttons">
+            <button data-radius="200" class="buffer-btn">200m</button>
+            <button data-radius="500" class="buffer-btn">500m</button>
+            <button data-radius="1000" class="buffer-btn">1km</button>
+            <button data-radius="2000" class="buffer-btn">2km</button>
+        </div>
+        
+        <select id="filterTypeSelect">
+            <option value="all">📌 All amenity types</option>
+        </select>
+        <button id="showNearbyBtn">📍 List within current buffer</button>
+    </div>
+
+    <script>
+        // --------------------------------------------------------------
+        // COMPLETE AMENITIES DATASET (121 records extracted from the provided Excel table)
+        // Each record: { name, type, lat, lng, distance, area, subCat }
+        // --------------------------------------------------------------
+        const amenitiesData = [
+            { name: "Pavitra kirana pasal", type: "Grocery", lat: 28.2610284, lng: 83.9797279, distance: 1800, area: "Bataule chowr" },
+            { name: "Laxmi atm", type: "ATM", lat: 28.2630381, lng: 83.9790076, distance: 2500, area: "Bataule chowr" },
+            { name: "Sharmila medical hall", type: "Health facility", lat: 28.2631715, lng: 83.9798134, distance: 2600, area: "Bataule chowr", subCat: "Pharmacy" },
+            { name: "Sampurna stationary and gift house", type: "Stationery", lat: 28.2631608, lng: 83.9798285, distance: 2610, area: "Bataule chowr" },
+            { name: "Radha photo and stationery", type: "Stationery", lat: 28.2631303, lng: 83.9798269, distance: 2650, area: "Bataule chowr" },
+            { name: "Sunil haircutting and sailon", type: "Barber Shop", lat: 28.2634197, lng: 83.9797339, distance: 2800, area: "Bataule chowr" },
+            { name: "ABC mini mart", type: "Grocery", lat: 28.266109, lng: 83.9798986, distance: 3200, area: "Bataule chowr" },
+            { name: "Kumari cave", type: "Recreational area", lat: 28.2699802, lng: 83.9856563, distance: 5000, area: "Pokhara 16 kur", subCat: "Hangout Spot" },
+            { name: "Sonu Smaridhi khaja Ghar", type: "Restaurant and cafe", lat: 28.2610408, lng: 83.9797104, distance: 1500, area: "Madhyam path ,Bataulichor" },
+            { name: "Dhaulagiri tailoring centre", type: "Tailor", lat: 28.2627503, lng: 83.9791559, distance: 2000, area: "Madian" },
+            { name: "Pokhara Hygiene Mart", type: "Grocery", lat: 28.2633008, lng: 83.9798463, distance: 2500, area: "Maidan" },
+            { name: "Orla fitness revolution", type: "GYM", lat: 28.2633103, lng: 83.9798653, distance: 2500, area: "Maidan" },
+            { name: "Batulichor driving institute", type: "Driving School", lat: 28.2645018, lng: 83.9806225, distance: 3000, area: "Batulichor" },
+            { name: "Naya pull", type: "Recreational area", lat: 28.2675392, lng: 83.9819368, distance: 3500, area: "Rajbadhero", subCat: "Suspension Bridge" },
+            { name: "Old Bridge", type: "Recreational area", lat: 28.2673161, lng: 83.9841555, distance: 3500, area: "Batulichor", subCat: "Suspension Bridge" },
+            { name: "ATM", type: "ATM", lat: 28.2566532, lng: 83.9779701, distance: 0, area: "Campus Gate" },
+            { name: "Thapa Stores", type: "Grocery", lat: 28.2567394, lng: 83.9775446, distance: 5, area: "Campus Gate" },
+            { name: "Lumbini Bikas Bank", type: "Bank", lat: 28.2573078, lng: 83.9773923, distance: 80, area: "Lamachaur Road" },
+            { name: "Aron and Student Khaja Ghar", type: "Restaurant and cafe", lat: 28.2575173, lng: 83.9771874, distance: 110, area: "Lamachaur Road" },
+            { name: "Bindyabasini Fruits and Vegetables Center", type: "Grocery", lat: 28.2581995, lng: 83.9767472, distance: 170, area: "Maddhyam Path" },
+            { name: "Mansa Khaja and Khana Ghar", type: "Restaurant and cafe", lat: 28.25838, lng: 83.9767196, distance: 190, area: "Maddhyam Path" },
+            { name: "Bindyabasini Chuira Udhyog", type: "Grocery", lat: 28.2586979, lng: 83.9764215, distance: 250, area: "Lamachaur road" },
+            { name: "Miras Futsal", type: "Recreational area", lat: 28.2590883, lng: 83.9735919, distance: 280, area: "Baniya Path", subCat: "Futsal place" },
+            { name: "Mount Cafe", type: "Restaurant and cafe", lat: 28.2598454, lng: 83.9751966, distance: 270, area: "Lamachaur" },
+            { name: "The Cake Gallery and Fresh Bakery", type: "Restaurant and cafe", lat: 28.2612696, lng: 83.9729873, distance: 380, area: "Lamachaur" },
+            { name: "Srijana Clinic", type: "Health facility", lat: 28.2612506, lng: 83.9729695, distance: 400, area: "Lamachaur", subCat: "Pharmacy" },
+            { name: "Himalayan Bank Limited", type: "Bank", lat: 28.2612153, lng: 83.9728872, distance: 410, area: "Lamachaur" },
+            { name: "NIC ATM", type: "ATM", lat: 28.2613256, lng: 83.9727615, distance: 420, area: "Lamachaur" },
+            { name: "Prime Bank ATM", type: "ATM", lat: 28.2614671, lng: 83.9723119, distance: 430, area: "Lamachaur" },
+            { name: "Lamachaur Dental Clinic", type: "Health facility", lat: 28.2614099, lng: 83.9723518, distance: 430, area: "Lamachaur", subCat: "Hospital" },
+            { name: "Muktinath Bikash Bank", type: "Bank", lat: 28.2613057, lng: 83.9722455, distance: 435, area: "Lamachaur" },
+            { name: "Baniya Mart", type: "Grocery", lat: 28.2610339, lng: 83.9719628, distance: 450, area: "Lamachaur" },
+            { name: "Prajwola Pharmacy", type: "Health facility", lat: 28.2610549, lng: 83.9718539, distance: 460, area: "Lamachaur", subCat: "Pharmacy" },
+            { name: "Olive Restaurant", type: "Restaurant and cafe", lat: 28.260964, lng: 83.971606, distance: 480, area: "Lamachaur" },
+            { name: "Galaxy Barber Shop", type: "Barber Shop", lat: 28.2608432, lng: 83.9716626, distance: 475, area: "Lamachaur" },
+            { name: "Aashika Tailors", type: "Tailor", lat: 28.2608191, lng: 83.97161, distance: 475, area: "Lamachaur" },
+            { name: "Big Bajar Mart", type: "Grocery", lat: 28.2607446, lng: 83.971213, distance: 500, area: "Lamachaur" },
+            { name: "Gentle and Glamour Barber Shop", type: "Barber Shop", lat: 28.2610347, lng: 83.9715307, distance: 480, area: "Lamachaur" },
+            { name: "Cacoa D Cafe", type: "Restaurant and cafe", lat: 28.2610338, lng: 83.9714935, distance: 380, area: "Lamachaur" },
+            { name: "NIMB Bank", type: "Bank", lat: 28.261037, lng: 83.9714894, distance: 370, area: "Lamachaur" },
+            { name: "NIMB ATM", type: "ATM", lat: 28.2610517, lng: 83.9714951, distance: 370, area: "Lamachaur" },
+            { name: "Lamachaur Polyclinic", type: "Health facility", lat: 28.2612469, lng: 83.9716606, distance: 460, area: "Lamachaur", subCat: "Hospital" },
+            { name: "Ekta Distributers", type: "Stationery", lat: 28.2617767, lng: 83.9721934, distance: 420, area: "Lamachaur" },
+            { name: "Machhapuchhre Bank", type: "Bank", lat: 28.2617898, lng: 83.9721771, distance: 420, area: "Lamachaur" },
+            { name: "Toda Mart", type: "Grocery", lat: 28.2618701, lng: 83.9722834, distance: 425, area: "Lamachaur" },
+            { name: "Poon Restaurant", type: "Restaurant and cafe", lat: 28.2614819, lng: 83.9727137, distance: 380, area: "Lamachaur" },
+            { name: "Giant Gym", type: "GYM", lat: 28.2596744, lng: 83.975766, distance: 260, area: "Bhawana path" },
+            { name: "Jay Akala Mai Driving Institute", type: "Driving School", lat: 28.2589943, lng: 83.9775817, distance: 150, area: "Maddhyam path" },
+            { name: "Karoma Cafe", type: "Restaurant and cafe", lat: 28.2584661, lng: 83.9772086, distance: 120, area: "Maddhyam Path" },
+            { name: "Cahur", type: "Hostel", lat: 28.2545836, lng: 83.9764654, distance: 200, area: "Lamachaur", subCat: "Girls" },
+            { name: "Medical Hall", type: "Health facility", lat: 28.2628004, lng: 83.9790699, distance: 2006, area: "Batulechaur", subCat: "Pharmacy" },
+            { name: "Laxmi Sunrise Bank", type: "Bank", lat: 28.2629713, lng: 83.9790348, distance: 2050, area: "Batulechaur" },
+            { name: "Garima Bikash Bank", type: "Bank", lat: 28.2632348, lng: 83.9798672, distance: 2100, area: "Batulechaur (Maidan)" },
+            { name: "Gurung Kirana Pasal", type: "Grocery", lat: 28.2644428, lng: 83.9797397, distance: 2150, area: "Batulechaur" },
+            { name: "Anup Pharmacy", type: "Health facility", lat: 28.2647072, lng: 83.9798737, distance: 2200, area: "Batulechaur Ganesh Mandir", subCat: "Pharmacy" },
+            { name: "Newari khaja ghar", type: "Restaurant and cafe", lat: 28.2545693, lng: 83.9797271, distance: 746, area: "Amardeep" },
+            { name: "Barsha kirana pasal", type: "Grocery", lat: 28.2548216, lng: 83.9794523, distance: 745, area: "Lamachaur" },
+            { name: "Manu khaja and khana ghar", type: "Restaurant and cafe", lat: 28.2556106, lng: 83.9784844, distance: 250, area: "Lamachaur" },
+            { name: "NIC ASIA BANK", type: "Bank", lat: 28.2555104, lng: 83.9784107, distance: 250, area: "Lamachaur" },
+            { name: "Dajubhai khana and khaja ghar", type: "Restaurant and cafe", lat: 28.2558151, lng: 83.9783206, distance: 220, area: "Lamachaur" },
+            { name: "Bhandari kirana store", type: "Grocery", lat: 28.2558957, lng: 83.978253, distance: 225, area: "Lamachaur" },
+            { name: "Anuragh medical", type: "Health facility", lat: 28.2562222, lng: 83.9778031, distance: 150, area: "Lamachaur", subCat: "Pharmacy" },
+            { name: "Naya dripti grocery shop", type: "Grocery", lat: 28.2596346, lng: 83.9806655, distance: 2500, area: "Batulichor" },
+            { name: "Naman pharmacy", type: "Health facility", lat: 28.2586604, lng: 83.9811638, distance: 2500, area: "Batulichor", subCat: "Pharmacy" },
+            { name: "Matrishisu miteri hospital", type: "Health facility", lat: 28.25869, lng: 83.9813387, distance: 2500, area: "Batulichor", subCat: "Hospital" },
+            { name: "Prabhu bank atm", type: "ATM", lat: 28.2583952, lng: 83.9813203, distance: 2500, area: "Batulichor" },
+            { name: "Sobita medical hall", type: "Health facility", lat: 28.258371, lng: 83.9812262, distance: 2500, area: "Batulichor", subCat: "Pharmacy" },
+            { name: "Karuna and srijita kirana store", type: "Grocery", lat: 28.2579203, lng: 83.9812773, distance: 2500, area: "Batulichor" },
+            { name: "Pramesha kirana store", type: "Grocery", lat: 28.2574095, lng: 83.9815447, distance: 2500, area: "Batulichor" },
+            { name: "Batulichor puja khaja ghar", type: "Restaurant and cafe", lat: 28.2554308, lng: 83.9823118, distance: 2500, area: "Batulichor" },
+            { name: "Adarsha driving school", type: "Driving School", lat: 28.253107, lng: 83.9847298, distance: 2500, area: "Deep" },
+            { name: "Thapa kirana", type: "Grocery", lat: 28.2542457, lng: 83.9801364, distance: 750, area: "Amardeep" },
+            { name: "Rohit and rohan kirana store", type: "Grocery", lat: 28.254342, lng: 83.980062, distance: 750, area: "Amardeep" },
+            { name: "Kc boys hostel", type: "Hostel", lat: 28.2586456, lng: 83.9764891, distance: 290, area: "Madhyampath chowk", subCat: "Boys" },
+            { name: "Himaz cinema flix", type: "Recreational area", lat: 28.262042, lng: 83.9726304, distance: 1250, area: "Lamachaur", subCat: "Hangout Spot" },
+            { name: "Thulipokhari mandnir", type: "Recreational area", lat: 28.2636685, lng: 83.9735036, distance: 1500, area: "Thulipokhari tol", subCat: "Hangout Spot" },
+            { name: "Sahid bhawana samriti park", type: "Recreational area", lat: 28.2638097, lng: 83.9736467, distance: 1500, area: "Lamachaur", subCat: "Hangout Spot" },
+            { name: "Gharmi starting point", type: "Recreational area", lat: 28.2644559, lng: 83.9744353, distance: 1500, area: "Pani tanki", subCat: "Hangout Spot" },
+            { name: "Mirror house", type: "Recreational area", lat: 28.2664225, lng: 83.9756248, distance: 2000, area: "Batulichor", subCat: "Hangout Spot" },
+            { name: "Chamero gufa kirana pasal", type: "Grocery", lat: 28.2671813, lng: 83.976044, distance: 2500, area: "Batulichor" },
+            { name: "Chiya and bubbles", type: "Recreational area", lat: 28.267322, lng: 83.9760427, distance: 2500, area: "Chameroguffa", subCat: "Hangout Spot" },
+            { name: "Chamero guffa", type: "Recreational area", lat: 28.267391, lng: 83.9760427, distance: 2500, area: "Batulichor", subCat: "Hangout Spot" },
+            { name: "Cave city garden resort", type: "Restaurant and cafe", lat: 28.2677946, lng: 83.9761264, distance: 2700, area: "Batulichor" },
+            { name: "Mahendra cave", type: "Recreational area", lat: 28.2716747, lng: 83.9794411, distance: 3000, area: "Batulichor", subCat: "Hangout Spot" },
+            { name: "Dikshya kirana store", type: "Grocery", lat: 28.2556787, lng: 83.9784409, distance: 239, area: "Lamachaur" },
+            { name: "Bethany barber shop", type: "Barber Shop", lat: 28.2558576, lng: 83.978115, distance: 220, area: "Lamachaur" },
+            { name: "Aakirti kirana pasal", type: "Grocery", lat: 28.2560682, lng: 83.9779922, distance: 200, area: "Lamachaur" },
+            { name: "GC mart", type: "Grocery", lat: 28.2592352, lng: 83.9808744, distance: 2500, area: "Batulichor" },
+            { name: "Nabina khaja ghar", type: "Restaurant and cafe", lat: 28.2590265, lng: 83.980991, distance: 2500, area: "Batulichor" },
+            { name: "Happy cafe", type: "Restaurant and cafe", lat: 28.2570973, lng: 83.9774785, distance: 100, area: "Lamachour" },
+            { name: "Bishnu tailors", type: "Tailor", lat: 28.2569468, lng: 83.9773922, distance: 60, area: "Lamachour" },
+            { name: "Lamachour stationary", type: "Stationery", lat: 28.2569361, lng: 83.9775422, distance: 30, area: "Lamachour" },
+            { name: "Hygienic food land", type: "Restaurant and cafe", lat: 28.2565921, lng: 83.9777305, distance: 10, area: "Lamachour wrc gate" },
+            { name: "Hotel season and Khaja ghar", type: "Restaurant and cafe", lat: 28.2565772, lng: 83.9777278, distance: 15, area: "Lamachour" },
+            { name: "Shrestha Khaja ghar", type: "Restaurant and cafe", lat: 28.2565249, lng: 83.9778949, distance: 20, area: "Lamachour" },
+            { name: "See first cafe", type: "Restaurant and cafe", lat: 28.2563869, lng: 83.9775912, distance: 2, area: "Lamachour" },
+            { name: "Infomax stationary", type: "Stationery", lat: 28.2563973, lng: 83.9776608, distance: 5, area: "Lamachour" },
+            { name: "Anurag medico pharma", type: "Health facility", lat: 28.2563463, lng: 83.9776998, distance: 15, area: "Lamachour", subCat: "Pharmacy" },
+            { name: "Bhandari kirana pasal", type: "Grocery", lat: 28.255829, lng: 83.9781123, distance: 25, area: "Lamachour" },
+            { name: "Aaktiti kirana pasal", type: "Grocery", lat: 28.2561009, lng: 83.9780126, distance: 18, area: "Lamachour" },
+            { name: "Nisita & renisha dairy suppliers", type: "Grocery", lat: 28.2579273, lng: 83.976202, distance: 110, area: "Lamachour" },
+            { name: "Annapurna cafe", type: "Restaurant and cafe", lat: 28.2577675, lng: 83.975923, distance: 130, area: "Lamachour" },
+            { name: "Dahal kirana pasal", type: "Grocery", lat: 28.2562406, lng: 83.9734869, distance: 1010, area: "Tulsighat" },
+            { name: "Kishmat pravati stores", type: "Grocery", lat: 28.255673, lng: 83.972964, distance: 1300, area: "Tulsighat marga" },
+            { name: "Seti riverside", type: "Recreational area", lat: 28.2522136, lng: 83.9702812, distance: 2000, area: "Seti river", subCat: "Riverside area" },
+            { name: "Yamdi point", type: "Recreational area", lat: 28.2548066, lng: 83.9661813, distance: 5000, area: "Yamdi", subCat: "Hangout Spot" },
+            { name: "Jangchub choeling monastery", type: "Recreational area", lat: 28.2619337, lng: 83.9567314, distance: 7000, area: "Hemja", subCat: "Hangout Spot" },
+            { name: "Yamdi KO pul", type: "Recreational area", lat: 28.2580097, lng: 83.9655048, distance: 5000, area: "Yamdi", subCat: "Suspension Bridge" },
+            { name: "Prajawala pharmacy", type: "Health facility", lat: 28.2609793, lng: 83.9718011, distance: 2000, area: "Lamachour chowk", subCat: "Pharmacy" },
+            { name: "Miras futsal", type: "Recreational area", lat: 28.2589568, lng: 83.9736932, distance: 2500, area: "Lamachour", subCat: "Futsal place" },
+            { name: "Jay Shiva Shambo Gym and fitness", type: "GYM", lat: 28.2567407, lng: 83.97404, distance: 900, area: "Tulsighat marga" },
+            { name: "Thapa Khaja Ghar", type: "Restaurant and cafe", lat: 28.2570229, lng: 83.977459, distance: 40, area: "WRC area" },
+            { name: "Bani Stationary", type: "Stationery", lat: 28.2564655, lng: 83.9776455, distance: 2, area: "WRC Gate" },
+            { name: "Namaskar Hair Cutting And Parlour", type: "Barber Shop", lat: 28.2562407, lng: 83.9777431, distance: 15, area: "WRC Gate" },
+            { name: "Bethany Barber Shop", type: "Barber Shop", lat: 28.2559196, lng: 83.9780833, distance: 100, area: "WRC Gate" },
+            { name: "NIC Asia Bank", type: "Bank", lat: 28.255524, lng: 83.9784193, distance: 120, area: "WRC gate" },
+            { name: "Chin Futsal", type: "Recreational area", lat: 28.2511188, lng: 83.9858739, distance: 700, area: "between batulechaur and deep", subCat: "Futsal place" },
+            { name: "Seti River Gorge", type: "Recreational area", lat: 28.2458929, lng: 83.9890229, distance: 900, area: "Deep", subCat: "Hangout Spot" },
+            { name: "Gorkha Memorial Museum", type: "Recreational area", lat: 28.2459957, lng: 83.9886569, distance: 900, area: "Deep", subCat: "Hangout Spot" },
+            { name: "Seti River Near Deep", type: "Recreational area", lat: 28.2514543, lng: 83.9781417, distance: 800, area: "Deep", subCat: "Riverside area" },
+            { name: "Bhalam Suspension Bridge", type: "Recreational area", lat: 28.2556293, lng: 83.9851576, distance: 1200, area: "Bhalam", subCat: "Suspension Bridge" }
+        ];
+
+        // WRC center coordinates (approx based on campus gate)
+        const WRC_CENTER = [28.2565, 83.9777];
+
+        // Initialize map
+        const map = L.map('map').setView(WRC_CENTER, 15.5);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> & CartoDB',
+            subdomains: 'abcd',
+            maxZoom: 19
+        }).addTo(map);
+
+        // Color mapping
+        const colors = {
+            "Grocery": "#4CAF50", "Restaurant and cafe": "#FF5722", "Recreational area": "#2196F3",
+            "Health facility": "#E91E63", "Bank": "#9C27B0", "ATM": "#FF9800", "Stationery": "#00BCD4",
+            "Barber Shop": "#795548", "Tailor": "#607D8B", "GYM": "#3F51B5", "Driving School": "#FFEB3B",
+            "Hostel": "#8BC34A", "Hostels": "#8BC34A"
+        };
+
+        function getMarkerIcon(color) {
+            return L.divIcon({
+                html: `<div style="background-color:${color}; width:16px; height:16px; border-radius:50%; border:2px solid white; box-shadow:0 1px 4px rgba(0,0,0,0.4); transition: transform 0.1s;"></div>`,
+                iconSize: [20, 20],
+                iconAnchor: [10, 10],
+                popupAnchor: [0, -8]
+            });
+        }
+
+        let allMarkers = [];
+        let currentBufferCircle = null;
+        let currentBufferRadius = null;
+
+        // function to add markers with hover tooltip & popup details
+        function addMarkers(filterType = "all") {
+            allMarkers.forEach(m => map.removeLayer(m));
+            allMarkers = [];
+
+            amenitiesData.forEach(item => {
+                if (filterType !== "all" && item.type !== filterType) return;
+                if (!item.lat || !item.lng) return;
+                const color = colors[item.type] || "#AAAAAA";
+                const marker = L.marker([item.lat, item.lng], { icon: getMarkerIcon(color) });
+                
+                // Hover tooltip (brief)
+                marker.bindTooltip(`<b>${item.name}</b><br>${item.type} | ${item.distance}m from WRC`, {
+                    sticky: true,
+                    className: "hover-tooltip-custom",
+                    offset: [10, -10]
+                });
+                
+                // Popup on click with more details
+                let popupHtml = `<div style="font-size:13px; min-width:170px;"><b>🏪 ${item.name}</b><br>
+                                📌 Type: ${item.type}<br>📍 Area: ${item.area || 'N/A'}<br>
+                                📏 Distance from WRC: ${item.distance} meters`;
+                if (item.subCat) popupHtml += `<br>🔖 Sub-category: ${item.subCat}`;
+                popupHtml += `</div>`;
+                marker.bindPopup(popupHtml);
+                
+                marker.on('mouseover', () => {
+                    document.getElementById('hoverDetails').innerHTML = `<span style="color:#FFB347;">✨ ${item.name}</span> (${item.type}) — ${item.distance}m from WRC<br><span style="font-size:11px;">📌 ${item.area || 'Unknown area'}</span>`;
+                });
+                marker.on('mouseout', () => {
+                    document.getElementById('hoverDetails').innerHTML = `Name, type & distance will appear here`;
+                });
+                
+                marker.addTo(map);
+                allMarkers.push(marker);
+            });
+        }
+
+        // draw buffer circle with given radius (meters)
+        function drawBuffer(radiusMeters) {
+            if (currentBufferCircle) {
+                map.removeLayer(currentBufferCircle);
+                currentBufferCircle = null;
+            }
+            if (radiusMeters && radiusMeters > 0) {
+                currentBufferCircle = L.circle(WRC_CENTER, {
+                    radius: radiusMeters,
+                    color: '#e34234',
+                    weight: 2.5,
+                    fillColor: '#ff6347',
+                    fillOpacity: 0.1,
+                    dashArray: '6, 8'
+                }).addTo(map).bindTooltip(`📐 ${radiusMeters}m service radius from WRC`, { sticky: true, direction: 'top' });
+                currentBufferRadius = radiusMeters;
+            } else {
+                currentBufferRadius = null;
+            }
+        }
+
+        // handle buffer button clicks
+        const bufferBtns = document.querySelectorAll('.buffer-btn');
+        bufferBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const radius = parseInt(btn.getAttribute('data-radius'), 10);
+                drawBuffer(radius);
+                // update active style
+                bufferBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+
+        // Show amenities within currently selected buffer
+        document.getElementById('showNearbyBtn').addEventListener('click', () => {
+            if (!currentBufferRadius) {
+                alert("⚠️ Please select a buffer radius first (200m, 500m, 1km, or 2km).");
+                return;
+            }
+            let nearbyList = [];
+            amenitiesData.forEach(item => {
+                if (!item.lat || !item.lng) return;
+                const distanceMeters = map.distance(WRC_CENTER, [item.lat, item.lng]);
+                if (distanceMeters <= currentBufferRadius) {
+                    nearbyList.push(`✓ ${item.name} (${item.type}) - ${Math.round(distanceMeters)}m`);
+                }
+            });
+            if (nearbyList.length === 0) {
+                alert(`ℹ️ No amenities found within ${currentBufferRadius}m of WRC.`);
+            } else {
+                alert(`🏆 ${nearbyList.length} amenities within ${currentBufferRadius}m:\n\n${nearbyList.join('\n')}`);
+            }
+        });
+
+        // populate filter dropdown with unique types
+        const typeSet = new Set(amenitiesData.map(d => d.type));
+        const filterSelect = document.getElementById('filterTypeSelect');
+        typeSet.forEach(t => {
+            const option = document.createElement('option');
+            option.value = t;
+            option.textContent = t;
+            filterSelect.appendChild(option);
+        });
+        
+        filterSelect.addEventListener('change', (e) => {
+            addMarkers(e.target.value);
+        });
+
+        // reset view: clear buffer, reset filter, zoom to WRC
+        document.getElementById('resetViewBtn').addEventListener('click', () => {
+            map.setView(WRC_CENTER, 15.5);
+            filterSelect.value = "all";
+            addMarkers("all");
+            if (currentBufferCircle) {
+                map.removeLayer(currentBufferCircle);
+                currentBufferCircle = null;
+                currentBufferRadius = null;
+            }
+            bufferBtns.forEach(b => b.classList.remove('active'));
+        });
+
+        // Add scale and custom legend
+        L.control.scale({ metric: true, imperial: false }).addTo(map);
+        
+        const legendControl = L.control({ position: 'bottomright' });
+        legendControl.onAdd = function () {
+            const div = L.DomUtil.create('div', 'legend');
+            div.innerHTML = '<strong>🏷️ Amenity Types</strong><br>';
+            for (let [type, col] of Object.entries(colors)) {
+                div.innerHTML += `<i style="background:${col};"></i> ${type}<br>`;
+            }
+            div.innerHTML += `<hr><span style="font-size:10px;">🖱️ Hover on markers<br>🔍 Click popup for full info</span>`;
+            return div;
+        };
+        legendControl.addTo(map);
+        
+        // WRC marker (campus reference)
+        L.marker(WRC_CENTER, {
+            icon: L.divIcon({ html: '🏫', iconSize: [24, 24], className: 'wrc-marker' }),
+            zIndexOffset: 1000
+        }).addTo(map).bindTooltip('🎓 WRC Campus (Western Regional College)', { permanent: false }).openTooltip();
+        
+        // initial load all markers
+        addMarkers("all");
+        // optional: set default active buffer to 200m to match original experience
+        setTimeout(() => {
+            drawBuffer(200);
+            document.querySelector('.buffer-btn[data-radius="200"]').classList.add('active');
+        }, 500);
+    </script>
+</body>
+</html>
