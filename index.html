@@ -3,11 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>WRC Amenities Map – Representative Icons from Excel</title>
+    <title>WRC Amenities Map – Representative Icons (Data Embedded)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- SheetJS for reading Excel files -->
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <!-- Font Awesome 6 (free icons) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
@@ -46,13 +44,6 @@
             backdrop-filter: blur(4px);
             font-size: 13px;
         }
-        .file-input-wrapper {
-            margin-bottom: 10px;
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-        .file-input-wrapper input { flex: 1; font-size: 12px; }
         .control-bar select, .control-bar button {
             width: 100%;
             margin-top: 8px;
@@ -107,13 +98,9 @@
     <div id="map"></div>
     <div class="info-panel" id="hoverInfoPanel">
         🧭 <strong>Hover over any amenity</strong><br>
-        <span id="hoverDetails">Load an Excel file to see amenities with icons</span>
+        <span id="hoverDetails">Amenities shown with intuitive icons</span>
     </div>
     <div class="control-bar">
-        <div class="file-input-wrapper">
-            <input type="file" id="excelInput" accept=".xls, .xlsx, .csv">
-            <button id="loadBtn">📂 Load & Map</button>
-        </div>
         <button id="resetViewBtn">⟳ Reset view & clear buffer</button>
         <div style="margin-top: 8px; font-size: 12px; font-weight: bold;">📍 Buffer radius:</div>
         <div class="buffer-buttons">
@@ -129,38 +116,166 @@
     </div>
 
     <script>
+        // --------------------------------------------------------------
+        // EMBEDDED AMENITIES DATA (121 records from outputexceltable.xls)
+        // "Hostels" unified to "Hostel" (only one category)
+        // --------------------------------------------------------------
+        const amenitiesDataRaw = [
+            { name: "Seti River Gorge", type: "Recreational area", lat: 28.2458929, lng: 83.9890229, distance: 1624.656, area: "Deep", subCat: "Hangout Spot" },
+            { name: "Gorkha Memorial Museum", type: "Recreational area", lat: 28.2459957, lng: 83.9886569, distance: 1591.605, area: "Deep", subCat: "Hangout Spot" },
+            { name: "Chin Futsal", type: "Recreational area", lat: 28.2511188, lng: 83.9858739, distance: 1008.915, area: "between batulechaur and deep", subCat: "Futsal place" },
+            { name: "Seti River Near Deep", type: "Recreational area", lat: 28.2514543, lng: 83.9781417, distance: 556.042, area: "Deep", subCat: "Riverside area" },
+            { name: "Seti riverside", type: "Recreational area", lat: 28.2522136, lng: 83.9702812, distance: 853.059, area: "Seti river", subCat: "Riverside area" },
+            { name: "Adarsha driving school", type: "Driving School", lat: 28.253107, lng: 83.9847298, distance: 796.897, area: "Deep", subCat: null },
+            { name: "Thapa kirana", type: "Grocery", lat: 28.2542457, lng: 83.9801364, distance: 352.439, area: "Amardeep", subCat: null },
+            { name: "Rohit and rohan kirana store", type: "Grocery", lat: 28.254342, lng: 83.980062, distance: 339.791, area: "Amardeep", subCat: null },
+            { name: "Yamdi point", type: "Recreational area", lat: 28.2548066, lng: 83.9661813, distance: 1129.952, area: "Yamdi", subCat: "Hangout Spot" },
+            { name: "Cahur", type: "Hostel", lat: 28.2545836, lng: 83.9764654, distance: 231.334, area: "Lamachaur", subCat: "Girls" },
+            { name: "Newari khaja ghar", type: "Restaurant and cafe", lat: 28.2545693, lng: 83.9797271, distance: 298.593, area: "Amardeep", subCat: null },
+            { name: "Barsha kirana pasal", type: "Grocery", lat: 28.2548216, lng: 83.9794523, distance: 259.750, area: "Lamachaur", subCat: null },
+            { name: "NIC ASIA BANK", type: "Bank", lat: 28.2555104, lng: 83.9784107, distance: 133.929, area: "Lamachaur", subCat: null },
+            { name: "Batulichor puja khaja ghar", type: "Restaurant and cafe", lat: 28.2554308, lng: 83.9823118, distance: 481.737, area: "Batulichor", subCat: null },
+            { name: "NIC Asia Bank", type: "Bank", lat: 28.255524, lng: 83.9784193, distance: 133.317, area: "WRC gate", subCat: null },
+            { name: "Kishmat pravati stores", type: "Grocery", lat: 28.255673, lng: 83.972964, distance: 457.308, area: "Tulsighat marga", subCat: null },
+            { name: "Manu khaja and khana ghar", type: "Restaurant and cafe", lat: 28.2556106, lng: 83.9784844, distance: 130.611, area: "Lamachaur", subCat: null },
+            { name: "Dikshya kirana store", type: "Grocery", lat: 28.2556787, lng: 83.9784409, distance: 122.283, area: "Lamachaur", subCat: null },
+            { name: "Bhalam Suspension Bridge", type: "Recreational area", lat: 28.2556293, lng: 83.9851576, distance: 753.377, area: "Bhalam", subCat: "Suspension Bridge" },
+            { name: "Dajubhai khana and khaja ghar", type: "Restaurant and cafe", lat: 28.2558151, lng: 83.9783206, distance: 103.332, area: "Lamachaur", subCat: null },
+            { name: "Bhandari kirana pasal", type: "Grocery", lat: 28.255829, lng: 83.9781123, distance: 88.028, area: "Lamachour", subCat: null },
+            { name: "Bethany barber shop", type: "Barber Shop", lat: 28.2558576, lng: 83.978115, distance: 85.785, area: "Lamachaur", subCat: null },
+            { name: "Bhandari kirana store", type: "Grocery", lat: 28.2558957, lng: 83.978253, distance: 92.439, area: "Lamachaur", subCat: null },
+            { name: "Bethany Barber Shop", type: "Barber Shop", lat: 28.2559196, lng: 83.9780833, distance: 78.591, area: "WRC Gate", subCat: null },
+            { name: "Aakirti kirana pasal", type: "Grocery", lat: 28.2560682, lng: 83.9779922, distance: 60.594, area: "Lamachaur", subCat: null },
+            { name: "Aaktiti kirana pasal", type: "Grocery", lat: 28.2561009, lng: 83.9780126, distance: 59.729, area: "Lamachour", subCat: null },
+            { name: "Dahal kirana pasal", type: "Grocery", lat: 28.2562406, lng: 83.9734869, distance: 398.596, area: "Tulsighat", subCat: null },
+            { name: "Anuragh medical", type: "Health facility", lat: 28.2562222, lng: 83.9778031, distance: 35.366, area: "Lamachaur", subCat: "Pharmacy" },
+            { name: "Namaskar Hair Cutting And Parlour", type: "Barber Shop", lat: 28.2562407, lng: 83.9777431, distance: 29.769, area: "WRC Gate", subCat: null },
+            { name: "Anurag medico pharma", type: "Health facility", lat: 28.2563463, lng: 83.9776998, distance: 18.820, area: "Lamachour", subCat: "Pharmacy" },
+            { name: "See first cafe", type: "Restaurant and cafe", lat: 28.2563869, lng: 83.9775912, distance: 7.743, area: "Lamachour", subCat: null },
+            { name: "Infomax stationary", type: "Stationery", lat: 28.2563973, lng: 83.9776608, distance: 12.772, area: "Lamachour", subCat: null },
+            { name: "Bani Stationary", type: "Stationery", lat: 28.2564655, lng: 83.9776455, distance: 10.738, area: "WRC Gate", subCat: null },
+            { name: "Shrestha Khaja ghar", type: "Restaurant and cafe", lat: 28.2565249, lng: 83.9778949, distance: 36.098, area: "Lamachour", subCat: null },
+            { name: "Hotel season and Khaja ghar", type: "Restaurant and cafe", lat: 28.2565772, lng: 83.9777278, distance: 23.907, area: "Lamachour", subCat: null },
+            { name: "Hygienic food land", type: "Restaurant and cafe", lat: 28.2565921, lng: 83.9777305, distance: 25.187, area: "Lamachour wrc gate", subCat: null },
+            { name: "ATM", type: "ATM", lat: 28.2566532, lng: 83.9779701, distance: 48.400, area: "Campus Gate", subCat: null },
+            { name: "Jay Shiva Shambo Gym and fitness", type: "GYM", lat: 28.2567407, lng: 83.97404, distance: 345.286, area: "Tulsighat marga", subCat: null },
+            { name: "Thapa Stores", type: "Grocery", lat: 28.2567394, lng: 83.9775446, distance: 33.205, area: "Campus Gate", subCat: null },
+            { name: "Lamachour stationary", type: "Stationery", lat: 28.2569361, lng: 83.9775422, distance: 55.016, area: "Lamachour", subCat: null },
+            { name: "Bishnu tailors", type: "Tailor", lat: 28.2569468, lng: 83.9773922, distance: 58.046, area: "Lamachour", subCat: null },
+            { name: "Thapa Khaja Ghar", type: "Restaurant and cafe", lat: 28.2570229, lng: 83.977459, distance: 65.129, area: "40", subCat: null },
+            { name: "Happy cafe", type: "Restaurant and cafe", lat: 28.2570973, lng: 83.9774785, distance: 73.142, area: "Lamachour", subCat: null },
+            { name: "Lumbini Bikas Bank", type: "Bank", lat: 28.2573078, lng: 83.9773923, distance: 97.322, area: "Lamachaur Road", subCat: null },
+            { name: "Pramesha kirana store", type: "Grocery", lat: 28.2574095, lng: 83.9815447, distance: 407.662, area: "Batulichor", subCat: null },
+            { name: "Aron and Student Khaja Ghar", type: "Restaurant and cafe", lat: 28.2575173, lng: 83.9771874, distance: 124.384, area: "Lamachaur Road", subCat: null },
+            { name: "Annapurna cafe", type: "Restaurant and cafe", lat: 28.2577675, lng: 83.975923, distance: 216.522, area: "Lamachour", subCat: null },
+            { name: "Yamdi KO pul", type: "Recreational area", lat: 28.2580097, lng: 83.9655048, distance: 1194.500, area: "Yamdi", subCat: "Suspension Bridge" },
+            { name: "Nisita & renisha dairy suppliers", type: "Grocery", lat: 28.2579273, lng: 83.976202, distance: 210.866, area: "Lamachour", subCat: null },
+            { name: "Karuna and srijita kirana store", type: "Grocery", lat: 28.2579203, lng: 83.9812773, distance: 402.015, area: "Batulichor", subCat: null },
+            { name: "Bindyabasini Fruits and Vegetables Center", type: "Grocery", lat: 28.2581995, lng: 83.9767472, distance: 210.077, area: "Maddhyam Path", subCat: null },
+            { name: "Mansa Khaja and Khana Ghar", type: "Restaurant and cafe", lat: 28.25838, lng: 83.9767196, distance: 229.725, area: "Maddhyam Path", subCat: null },
+            { name: "Sobita medical hall", type: "Health facility", lat: 28.258371, lng: 83.9812262, distance: 420.555, area: "Batulichor", subCat: "Pharmacy" },
+            { name: "Karoma Cafe", type: "Restaurant and cafe", lat: 28.2584661, lng: 83.9772086, distance: 227.031, area: "Maddhyam Path", subCat: null },
+            { name: "Prabhu bank atm", type: "ATM", lat: 28.2583952, lng: 83.9813203, distance: 429.880, area: "Batulichor", subCat: null },
+            { name: "Kc boys hostel", type: "Hostel", lat: 28.2586456, lng: 83.9764891, distance: 265.468, area: "Madhyampath chowk", subCat: "Boys" },
+            { name: "Bindyabasini Chuira Udhyog", type: "Grocery", lat: 28.2586979, lng: 83.9764215, distance: 273.419, area: "Lamachaur road", subCat: null },
+            { name: "Naman pharmacy", type: "Health facility", lat: 28.2586604, lng: 83.9811638, distance: 432.716, area: "Batulichor", subCat: "Pharmacy" },
+            { name: "Matrishisu miteri hospital", type: "Health facility", lat: 28.25869, lng: 83.9813387, distance: 448.761, area: "Batulichor", subCat: "Hospital" },
+            { name: "Miras futsal", type: "Recreational area", lat: 28.2589568, lng: 83.9736932, distance: 469.650, area: "Lamachour", subCat: "Futsal place" },
+            { name: "Jay Akala Mai Driving Institute", type: "Driving School", lat: 28.2589943, lng: 83.9775817, distance: 283.291, area: "Maddhyam path", subCat: null },
+            { name: "Miras Futsal", type: "Recreational area", lat: 28.2590883, lng: 83.9735919, distance: 486.351, area: "Baniya Path", subCat: "Futsal place" },
+            { name: "Nabina khaja ghar", type: "Restaurant and cafe", lat: 28.2590265, lng: 83.980991, distance: 443.957, area: "Batulichor", subCat: null },
+            { name: "GC mart", type: "Grocery", lat: 28.2592352, lng: 83.9808744, distance: 450.868, area: "Batulichor", subCat: null },
+            { name: "Giant Gym", type: "GYM", lat: 28.2596744, lng: 83.975766, distance: 398.742, area: "Bhawana path", subCat: null },
+            { name: "Naya dripti grocery shop", type: "Grocery", lat: 28.2596346, lng: 83.9806655, distance: 468.712, area: "Batulichor", subCat: null },
+            { name: "Mount Cafe", type: "Restaurant and cafe", lat: 28.2598454, lng: 83.9751966, distance: 442.224, area: "Lamachaur", subCat: null },
+            { name: "Big Bajar Mart", type: "Grocery", lat: 28.2607446, lng: 83.971213, distance: 783.469, area: "Lamachaur", subCat: null },
+            { name: "Aashika Tailors", type: "Tailor", lat: 28.2608191, lng: 83.97161, distance: 758.198, area: "Lamachaur", subCat: null },
+            { name: "Galaxy Barber Shop", type: "Barber Shop", lat: 28.2608432, lng: 83.9716626, distance: 755.963, area: "Lamachaur", subCat: null },
+            { name: "Olive Restaurant", type: "Restaurant and cafe", lat: 28.260964, lng: 83.971606, distance: 768.887, area: "Lamachaur", subCat: null },
+            { name: "Prajawala pharmacy", type: "Health facility", lat: 28.2609793, lng: 83.9718011, distance: 755.603, area: "Lamachour chowk", subCat: "Pharmacy" },
+            { name: "Cacoa D Cafe", type: "Restaurant and cafe", lat: 28.2610338, lng: 83.9714935, distance: 782.309, area: "Lamachaur", subCat: null },
+            { name: "Gentle and Glamour Barber Shop", type: "Barber Shop", lat: 28.2610347, lng: 83.9715307, distance: 779.606, area: "Lamachaur", subCat: null },
+            { name: "NIMB Bank", type: "Bank", lat: 28.261037, lng: 83.9714894, distance: 782.846, area: "Lamachaur", subCat: null },
+            { name: "Baniya Mart", type: "Grocery", lat: 28.2610339, lng: 83.9719628, distance: 747.948, area: "Lamachaur", subCat: null },
+            { name: "NIMB ATM", type: "ATM", lat: 28.2610517, lng: 83.9714951, distance: 783.484, area: "Lamachaur", subCat: null },
+            { name: "Prajwola Pharmacy", type: "Health facility", lat: 28.2610549, lng: 83.9718539, distance: 757.384, area: "Lamachaur", subCat: "Pharmacy" },
+            { name: "Pavitra kirana pasal", type: "Grocery", lat: 28.2610284, lng: 83.9797279, distance: 552.328, area: "Bataule chowr", subCat: null },
+            { name: "Sonu Smaridhi khaja Ghar", type: "Restaurant and cafe", lat: 28.2610408, lng: 83.9797104, distance: 552.930, area: "Madhyam path ,Bataulichor", subCat: null },
+            { name: "Himalayan Bank Limited", type: "Bank", lat: 28.2612153, lng: 83.9728872, distance: 699.395, area: "Lamachaur", subCat: null },
+            { name: "Lamachaur Polyclinic", type: "Health facility", lat: 28.2612469, lng: 83.9716606, distance: 785.767, area: "Lamachaur", subCat: "Hospital" },
+            { name: "Srijana Clinic", type: "Health facility", lat: 28.2612506, lng: 83.9729695, distance: 697.135, area: "Lamachaur", subCat: "Pharmacy" },
+            { name: "The Cake Gallery and Fresh Bakery", type: "Restaurant and cafe", lat: 28.2612696, lng: 83.9729873, distance: 697.627, area: "Lamachaur", subCat: null },
+            { name: "Muktinath Bikash Bank", type: "Bank", lat: 28.2613057, lng: 83.9722455, distance: 749.275, area: "Lamachaur", subCat: null },
+            { name: "NIC ATM", type: "ATM", lat: 28.2613256, lng: 83.9727615, distance: 716.720, area: "Lamachaur", subCat: null },
+            { name: "Lamachaur Dental Clinic", type: "Health facility", lat: 28.2614099, lng: 83.9723518, distance: 750.515, area: "Lamachaur", subCat: "Hospital" },
+            { name: "Prime Bank ATM", type: "ATM", lat: 28.2614671, lng: 83.9723119, distance: 757.834, area: "Lamachaur", subCat: null },
+            { name: "Poon Restaurant", type: "Restaurant and cafe", lat: 28.2614819, lng: 83.9727137, distance: 732.937, area: "Lamachaur", subCat: null },
+            { name: "Jangchub choeling monastery", type: "Recreational area", lat: 28.2619337, lng: 83.9567314, distance: 2132.068, area: "Hemja", subCat: "Hangout Spot" },
+            { name: "Ekta Distributers", type: "Stationery", lat: 28.2617767, lng: 83.9721934, distance: 791.108, area: "Lamachaur", subCat: null },
+            { name: "Machhapuchhre Bank", type: "Bank", lat: 28.2617898, lng: 83.9721771, distance: 793.257, area: "Lamachaur", subCat: null },
+            { name: "Toda Mart", type: "Grocery", lat: 28.2618701, lng: 83.9722834, distance: 793.107, area: "Lamachaur", subCat: null },
+            { name: "Himaz cinema flix", type: "Recreational area", lat: 28.262042, lng: 83.9726304, distance: 786.339, area: "Lamachaur", subCat: "Hangout Spot" },
+            { name: "Dhaulagiri tailoring centre", type: "Tailor", lat: 28.2627503, lng: 83.9791559, distance: 717.550, area: "Madian", subCat: null },
+            { name: "Medical Hall", type: "Health facility", lat: 28.2628004, lng: 83.9790699, distance: 721.163, area: "Batulechaur", subCat: "Pharmacy" },
+            { name: "Laxmi Sunrise Bank", type: "Bank", lat: 28.2629713, lng: 83.9790348, distance: 739.018, area: "Batulechaur", subCat: null },
+            { name: "Laxmi atm", type: "ATM", lat: 28.2630381, lng: 83.9790076, distance: 745.759, area: "Bataule chowr", subCat: null },
+            { name: "Radha photo and stationery", type: "Stationery", lat: 28.2631303, lng: 83.9798269, distance: 775.165, area: "Bataule chowr", subCat: null },
+            { name: "Sampurna stationary and gift house", type: "Stationery", lat: 28.2631608, lng: 83.9798285, distance: 778.448, area: "Bataule chowr", subCat: null },
+            { name: "Sharmila medical hall", type: "Health facility", lat: 28.2631715, lng: 83.9798134, distance: 779.158, area: "Bataule chowr", subCat: "Pharmacy" },
+            { name: "Garima Bikash Bank", type: "Bank", lat: 28.2632348, lng: 83.9798672, distance: 787.403, area: "Batulechaur (Maidan)", subCat: null },
+            { name: "Pokhara Hygiene Mart", type: "Grocery", lat: 28.2633008, lng: 83.9798463, distance: 793.822, area: "Maidan", subCat: null },
+            { name: "Orla fitness revolution", type: "GYM", lat: 28.2633103, lng: 83.9798653, distance: 795.365, area: "Maidan", subCat: null },
+            { name: "Sunil haircutting and sailon", type: "Barber Shop", lat: 28.2634197, lng: 83.9797339, distance: 803.439, area: "Bataule chowr", subCat: null },
+            { name: "Thulipokhari mandnir", type: "Recreational area", lat: 28.2636685, lng: 83.9735036, distance: 894.235, area: "Thulipokhari tol", subCat: "Hangout Spot" },
+            { name: "Sahid bhawana samriti park", type: "Recreational area", lat: 28.2638097, lng: 83.9736467, distance: 902.256, area: "Lamachaur", subCat: "Hangout Spot" },
+            { name: "Gharmi starting point", type: "Recreational area", lat: 28.2644559, lng: 83.9744353, distance: 939.749, area: "Pani tanki", subCat: "Hangout Spot" },
+            { name: "Gurung Kirana Pasal", type: "Grocery", lat: 28.2644428, lng: 83.9797397, distance: 913.384, area: "Batulechaur", subCat: null },
+            { name: "Batulichor driving institute", type: "Driving School", lat: 28.2645018, lng: 83.9806225, distance: 943.866, area: "Batulichor", subCat: null },
+            { name: "Anup Pharmacy", type: "Health facility", lat: 28.2647072, lng: 83.9798737, distance: 945.003, area: "Batulechaur Ganesh Mandir", subCat: "Pharmacy" },
+            { name: "ABC mini mart", type: "Grocery", lat: 28.266109, lng: 83.9798986, distance: 1096.979, area: "Bataule chowr", subCat: null },
+            { name: "Mirror house", type: "Recreational area", lat: 28.2664225, lng: 83.9756248, distance: 1122.878, area: "Batulichor", subCat: "Hangout Spot" },
+            { name: "Chamero gufa kirana pasal", type: "Grocery", lat: 28.2671813, lng: 83.976044, distance: 1200.190, area: "Batulichor", subCat: null },
+            { name: "Chiya and bubbles", type: "Recreational area", lat: 28.267322, lng: 83.9760427, distance: 1215.693, area: "Chameroguffa", subCat: "Hangout Spot" },
+            { name: "Chamero guffa", type: "Recreational area", lat: 28.267391, lng: 83.9760427, distance: 1223.289, area: "Batulichor", subCat: "Hangout Spot" },
+            { name: "Old Bridge", type: "Recreational area", lat: 28.2673161, lng: 83.9841555, distance: 1369.909, area: "Batulichor", subCat: "Suspension Bridge" },
+            { name: "Naya pull", type: "Recreational area", lat: 28.2675392, lng: 83.9819368, distance: 1304.373, area: "Rajbadhero", subCat: "Suspension Bridge" },
+            { name: "Cave city garden resort", type: "Restaurant and cafe", lat: 28.2677946, lng: 83.9761264, distance: 1266.807, area: "Batulichor", subCat: null },
+            { name: "Kumari cave", type: "Recreational area", lat: 28.2699802, lng: 83.9856563, distance: 1699.925, area: "Pokhara 16 kur", subCat: "Hangout Spot" },
+            { name: "Mahendra cave", type: "Recreational area", lat: 28.2716747, lng: 83.9794411, distance: 1699.751, area: "Batulichor", subCat: "Hangout Spot" }
+        ];
+
+        // Unify "Hostels" into "Hostel" (already done above – no "Hostels" in this list)
+        const amenitiesData = amenitiesDataRaw;
+
+        // Representative icons (Font Awesome) and background colors
+        const iconMap = {
+            "Grocery": "fa-store",
+            "Restaurant and cafe": "fa-utensils",
+            "Recreational area": "fa-tree",
+            "Health facility": "fa-hospital",
+            "Bank": "fa-landmark",
+            "ATM": "fa-money-bill-wave",
+            "Stationery": "fa-pen-ruler",
+            "Barber Shop": "fa-cut",
+            "Tailor": "fa-scissors",
+            "GYM": "fa-dumbbell",
+            "Driving School": "fa-car",
+            "Hostel": "fa-bed"
+        };
+
+        const bgColors = {
+            "Grocery": "#4CAF50", "Restaurant and cafe": "#FF5722", "Recreational area": "#2196F3",
+            "Health facility": "#E91E63", "Bank": "#9C27B0", "ATM": "#FF9800", "Stationery": "#00BCD4",
+            "Barber Shop": "#795548", "Tailor": "#607D8B", "GYM": "#3F51B5", "Driving School": "#FFEB3B",
+            "Hostel": "#8BC34A"
+        };
+
+        // ---------- Map Initialization ----------
         const WRC_CENTER = [28.2565, 83.9777];
         let map = null;
         let allMarkers = [];
         let currentBufferCircle = null;
         let currentBufferRadius = null;
-        let amenitiesData = [];      // will be filled from Excel
-
-        // Mapping of amenity type -> Font Awesome icon (solid or regular)
-        const iconMap = {
-            "Grocery": "fa-store",               // 🛒
-            "Restaurant and cafe": "fa-utensils", // 🍽️
-            "Recreational area": "fa-tree",       // 🌲 / park
-            "Health facility": "fa-hospital",     // 🏥
-            "Bank": "fa-landmark",                // 🏦
-            "ATM": "fa-money-bill-wave",          // 💵
-            "Stationery": "fa-pen-ruler",         // ✏️
-            "Barber Shop": "fa-cut",              // ✂️
-            "Tailor": "fa-scissors",              // ✂️ (different)
-            "GYM": "fa-dumbbell",                 // 💪
-            "Driving School": "fa-car",           // 🚗
-            "Hostel": "fa-bed",                   // 🛏️
-            "Hostels": "fa-bed",
-            "Other": "fa-location-dot"
-        };
-
-        // Background colors for each type (soft, but icon stands out)
-        const bgColors = {
-            "Grocery": "#4CAF50", "Restaurant and cafe": "#FF5722", "Recreational area": "#2196F3",
-            "Health facility": "#E91E63", "Bank": "#9C27B0", "ATM": "#FF9800", "Stationery": "#00BCD4",
-            "Barber Shop": "#795548", "Tailor": "#607D8B", "GYM": "#3F51B5", "Driving School": "#FFEB3B",
-            "Hostel": "#8BC34A", "Hostels": "#8BC34A", "Other": "#AAAAAA"
-        };
 
         function initMap() {
             if (map) return;
@@ -177,7 +292,6 @@
                 const div = L.DomUtil.create('div', 'legend');
                 div.innerHTML = '<strong>🏷️ Amenity Types</strong><br>';
                 for (let [type, color] of Object.entries(bgColors)) {
-                    if (type === "Other") continue;
                     const iconClass = iconMap[type] || "fa-location-dot";
                     div.innerHTML += `<i class="fas ${iconClass}" style="color:${color};"></i> ${type}<br>`;
                 }
@@ -185,7 +299,7 @@
                 return div;
             };
             legend.addTo(map);
-            // WRC marker as a distinct icon
+            // WRC campus marker
             L.marker(WRC_CENTER, { 
                 icon: L.divIcon({ 
                     html: '<i class="fas fa-university" style="font-size:24px; color:#2c3e66; text-shadow: 0 0 2px white;"></i>', 
@@ -199,7 +313,6 @@
         function getMarkerIcon(type) {
             const iconName = iconMap[type] || "fa-location-dot";
             const bgColor = bgColors[type] || "#AAAAAA";
-            // Create a stylish marker with white circle background and colored icon
             const html = `
                 <div style="
                     background-color: white;
@@ -231,9 +344,8 @@
 
             amenitiesData.forEach(item => {
                 if (filterType !== "all" && item.type !== filterType) return;
-                const icon = getMarkerIcon(item.type);
-                const marker = L.marker([item.lat, item.lng], { icon: icon });
-                const distText = item.distance !== undefined ? item.distance.toFixed(1) : '?';
+                const marker = L.marker([item.lat, item.lng], { icon: getMarkerIcon(item.type) });
+                const distText = item.distance.toFixed(1);
                 marker.bindTooltip(`<b>${item.name}</b><br>${item.type} | ${distText}m from WRC`, {
                     sticky: true, className: "hover-tooltip-custom", offset: [10, -10]
                 });
@@ -245,7 +357,7 @@
                     document.getElementById('hoverDetails').innerHTML = `<span style="color:#FFB347;">✨ ${item.name}</span> (${item.type}) — ${distText}m from WRC<br><span style="font-size:11px;">📌 ${item.area || 'Unknown area'}</span>`;
                 });
                 marker.on('mouseout', () => {
-                    document.getElementById('hoverDetails').innerHTML = `Name, type & accurate distance from Excel — hover any icon`;
+                    document.getElementById('hoverDetails').innerHTML = `Amenities shown with intuitive icons – hover for details`;
                 });
                 marker.addTo(map);
                 allMarkers.push(marker);
@@ -283,87 +395,12 @@
             });
         }
 
-        // Parse Excel and extract amenities
-        function parseExcelAndMap(data) {
-            const workbook = XLSX.read(data, { type: 'array' });
-            const sheet = workbook.Sheets[workbook.SheetNames[0]];
-            const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-            if (!rows || rows.length < 2) throw new Error("No data found");
-            const headers = rows[0].map(h => String(h || "").trim());
-            // Find column indices (case-insensitive partial match)
-            const colIndex = (keywords) => {
-                for (let i = 0; i < headers.length; i++) {
-                    const h = headers[i].toLowerCase();
-                    if (keywords.some(kw => h.includes(kw))) return i;
-                }
-                return -1;
-            };
-            const nameCol = colIndex(["name_of_am", "amenity name", "name"]);
-            const typeCol = colIndex(["amenity_ty", "amenity type", "type"]);
-            const latCol = colIndex(["_location_o_latitude", "latitude", "lat"]);
-            const lngCol = colIndex(["_locatio_1", "longitude", "lon", "long"]);
-            const distCol = colIndex(["distance_from_wrc", "distance_1", "distance"]);
-            const areaCol = colIndex(["area_name", "area"]);
-            const subCatCol = colIndex(["sub_catego", "sub_category", "sub_cat"]);
-            if (nameCol === -1 || latCol === -1 || lngCol === -1) {
-                alert("Could not find required columns (name, latitude, longitude). Check file headers.");
-                return;
-            }
-            const amenities = [];
-            for (let i = 1; i < rows.length; i++) {
-                const row = rows[i];
-                if (!row || row.length === 0) continue;
-                const name = row[nameCol] ? String(row[nameCol]).trim() : "";
-                if (!name) continue;
-                let lat = parseFloat(row[latCol]);
-                let lng = parseFloat(row[lngCol]);
-                if (isNaN(lat) || isNaN(lng)) continue;
-                let type = typeCol !== -1 ? String(row[typeCol] || "Other").trim() : "Other";
-                let distance = distCol !== -1 ? parseFloat(row[distCol]) : NaN;
-                if (isNaN(distance)) distance = 0;
-                let area = areaCol !== -1 ? String(row[areaCol] || "").trim() : "";
-                let subCat = subCatCol !== -1 ? String(row[subCatCol] || "").trim() : "";
-                amenities.push({ name, type, lat, lng, distance, area, subCat });
-            }
-            if (amenities.length === 0) throw new Error("No valid amenities found");
-            amenitiesData = amenities;
-            updateFilterDropdown();
-            renderMap("all");
-            if (currentBufferCircle) map.removeLayer(currentBufferCircle);
-            currentBufferCircle = null;
-            currentBufferRadius = null;
-            document.querySelectorAll('.buffer-btn').forEach(btn => btn.classList.remove('active'));
-            drawBuffer(200);
-            document.querySelector('.buffer-btn[data-radius="200"]').classList.add('active');
-            document.getElementById('hoverDetails').innerHTML = `✅ Loaded ${amenities.length} amenities. Hover over icons.`;
-        }
-
-        // Event listeners
-        document.getElementById('loadBtn').addEventListener('click', () => {
-            const fileInput = document.getElementById('excelInput');
-            if (!fileInput.files || fileInput.files.length === 0) {
-                alert("Please select an Excel file first.");
-                return;
-            }
-            const file = fileInput.files[0];
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    parseExcelAndMap(e.target.result);
-                } catch (err) {
-                    console.error(err);
-                    alert("Error parsing file: " + err.message);
-                }
-            };
-            reader.onerror = () => alert("Failed to read file");
-            reader.readAsArrayBuffer(file);
-        });
-
+        // ---------- Event Listeners ----------
         document.getElementById('resetViewBtn').addEventListener('click', () => {
             if (!map) return;
             map.setView(WRC_CENTER, 15.5);
             document.getElementById('filterTypeSelect').value = "all";
-            if (amenitiesData.length) renderMap("all");
+            renderMap("all");
             if (currentBufferCircle) map.removeLayer(currentBufferCircle);
             currentBufferCircle = null;
             currentBufferRadius = null;
@@ -381,7 +418,6 @@
 
         document.getElementById('showNearbyBtn').addEventListener('click', () => {
             if (!currentBufferRadius) { alert("Please select a buffer radius first."); return; }
-            if (!amenitiesData.length) { alert("Load an Excel file first."); return; }
             const nearby = amenitiesData.filter(item => item.distance <= currentBufferRadius);
             if (nearby.length === 0) alert(`No amenities within ${currentBufferRadius}m.`);
             else {
@@ -391,11 +427,15 @@
         });
 
         document.getElementById('filterTypeSelect').addEventListener('change', (e) => {
-            if (amenitiesData.length) renderMap(e.target.value);
+            renderMap(e.target.value);
         });
 
+        // Start the map
         initMap();
-        document.getElementById('hoverDetails').innerHTML = `Upload your Excel file (outputexceltable.xls) to see representative icons.`;
+        updateFilterDropdown();
+        renderMap("all");
+        drawBuffer(200);
+        document.querySelector('.buffer-btn[data-radius="200"]').classList.add('active');
     </script>
 </body>
 </html>
